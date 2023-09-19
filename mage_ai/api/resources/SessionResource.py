@@ -11,9 +11,12 @@ from mage_ai.orchestration.db import safe_db_query
 from mage_ai.orchestration.db.models.oauth import Role, User
 from mage_ai.settings import AUTHENTICATION_MODE, LDAP_DEFAULT_ACCESS
 from mage_ai.usage_statistics.logger import UsageStatisticLogger
+from mage_ai.api.operations.constants import COOKIE_PREFIX
 
 
 class SessionResource(BaseResource):
+    cookie_names = ['session-id']
+
     @classmethod
     @safe_db_query
     async def create(self, payload, _, **kwargs):
@@ -22,6 +25,7 @@ class SessionResource(BaseResource):
         username = payload.get('username')
         token = payload.get('token')
         provider = payload.get('provider')
+        session_id = payload.get(COOKIE_PREFIX + 'session-id')
 
         if token and provider:
             if provider == OAUTH_PROVIDER_ACTIVE_DIRECTORY:
