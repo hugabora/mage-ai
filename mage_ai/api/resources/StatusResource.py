@@ -15,6 +15,7 @@ from mage_ai.server.scheduler_manager import scheduler_manager
 from mage_ai.settings import (
     REQUIRE_USER_AUTHENTICATION,
     REQUIRE_USER_PERMISSIONS,
+    SYSTEMLINK_SSO,
     is_disable_pipeline_edit_access,
 )
 from mage_ai.settings.repo import get_repo_path
@@ -62,6 +63,7 @@ class StatusResource(GenericResource):
             'require_user_permissions': REQUIRE_USER_PERMISSIONS,
             'project_type': project_type,
             'project_uuid': get_project_uuid(),
+            'systemlink_sso': SYSTEMLINK_SSO,
         }
 
         display_format = meta.get('_format') if meta else None

@@ -11,9 +11,17 @@ from mage_ai.orchestration.db import safe_db_query
 from mage_ai.orchestration.db.models.oauth import Role, User
 from mage_ai.settings import AUTHENTICATION_MODE, LDAP_DEFAULT_ACCESS
 from mage_ai.usage_statistics.logger import UsageStatisticLogger
+from mage_ai.api.operations.constants import COOKIE_PREFIX
+from mage_ai import settings
+from mage_ai.authentication.systemlink import (
+    get_systemlink_auth_info,
+    translate_user_privs_to_role,
+)
 
 
 class SessionResource(BaseResource):
+    cookie_names = ['session-id']
+
     @classmethod
     @safe_db_query
     async def create(self, payload, _, **kwargs):
@@ -22,6 +30,72 @@ class SessionResource(BaseResource):
         username = payload.get('username')
         token = payload.get('token')
         provider = payload.get('provider')
+        session_id = payload.get(COOKIE_PREFIX + 'session-id')
+
+        if settings.SYSTEMLINK_SSO and (password is None or password == ''):
+            auth_resp = get_systemlink_auth_info(session_id)
+            is_error = auth_resp is None or auth_resp.get('error') is not None
+            user_info = {}
+            error = ApiError.RESOURCE_NOT_FOUND
+
+            if not is_error:
+                user_info = auth_resp.get('user')
+                if not user_info:
+                    is_error = True
+
+            if is_error:
+                error.update(
+                    {
+                        'message': 'Login to SLE required, go to /login?redirectUri=...',
+                        'url': '/login?redirectUrl=/mage'
+                    }
+                )
+
+            user = None
+            principal_name = ''
+            roles_for_workspace = None
+
+            if not is_error:
+                principal_name = user_info.get('email')
+                roles_for_workspace = translate_user_privs_to_role(settings.SYSTEMLINK_WORKSPACE_ID,
+                                                                   auth_resp)
+                # print('Roles:' + roles_for_workspace)
+                if roles_for_workspace is None:
+                    is_error = True
+                    error.update(
+                        {
+                            'message': 'User is not allowed for this workspace',
+                            'url': '/login?redirectUrl=/mage'
+                        }
+                    )
+
+            if not is_error:
+                # roles_for_workspace is not None
+
+                user = User.query.filter(User.email == principal_name).first()
+
+                if not user:
+                    print('first user login, creating user.')
+
+                    # Use the auth request to check privs against workspaces
+                    print('TODO proactively synch user info and role info off-band')
+                    print('TODO SLO, verify cookie match on each call, can use a cache of '
+                          'oauth token session_id pairs, likely in app.py')
+                    user = User.create(
+                        roles_new=roles_for_workspace,
+                        username=principal_name,
+                        email=principal_name,
+                    )
+                else:
+                    print("TODO better compare here")
+                    if user.roles_new != roles_for_workspace:
+                        user.update(roles_new=roles_for_workspace)
+
+            if is_error:
+                raise ApiError(error)
+
+            oauth_token = generate_access_token(user, kwargs['oauth_client'])
+            return self(oauth_token, user, **kwargs)
 
         if token and provider:
             if provider == OAUTH_PROVIDER_ACTIVE_DIRECTORY:

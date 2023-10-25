@@ -7,6 +7,7 @@ import AuthToken from '@api/utils/AuthToken';
 import FlexContainer from '@oracle/components/FlexContainer';
 import Headline from '@oracle/elements/Headline';
 import KeyboardShortcutButton from '@oracle/elements/Button/KeyboardShortcutButton';
+import Spinner from '@oracle/components/Spinner';
 import Spacing from '@oracle/elements/Spacing';
 import Text from '@oracle/elements/Text';
 import TextInput from '@oracle/elements/Inputs/TextInput';
@@ -25,6 +26,8 @@ import { queryFromUrl, queryString } from '@utils/url';
 import { setUser } from '@utils/session';
 import { MicrosoftIcon } from '@oracle/icons';
 import { OauthProviderEnum } from '@interfaces/OauthType';
+import axios from 'axios';
+import { system } from 'styled-system';
 
 const KEY_EMAIL = 'email';
 const KEY_PASSWORD = 'password';
@@ -33,11 +36,52 @@ const KEY_PROVIDER = 'provider';
 
 type SignFormProps = {
   title: string;
+  forceLocal?: boolean;
 };
+
+let systemlinkSso = false;
+let loginUrl = '';
 
 function SignForm({
   title,
+  forceLocal,
 }: SignFormProps) {
+  const { data } = api.statuses.list({}, {}, {});
+  systemlinkSso =
+    useMemo(() => data?.statuses?.[0]?.systemlink_sso, [data]);
+  const [isRedirect, setRedirect] = useState(false);
+  const [showSpinner, setShowSpinner] = useState(true);
+  const [showPageLocal, setShowPageLocal] = useState(false);
+
+  useEffect(() => {
+    if (!forceLocal && systemlinkSso) {
+      // check if user is logged in to sle
+      const url = '/niauth/v1/user';
+      axios.request({
+        url: url,
+      }).then(response => {
+        // User is logged in
+        // send req to create session and stuff
+        console.log('user found ok')
+        setTimeout(() => {
+          create({
+            session: payload,
+          });
+        }, 1);
+      }).catch(error => {
+        // Not logged in, send to SLE login
+        setRedirect(true);
+      })
+      // end of call to SLE
+    }
+    else {
+      // check value of systemlinkSso for vanilla version and chewck forceLocal has an actual value and is not undefined
+      if (systemlinkSso === false || forceLocal === true) {
+        setShowPageLocal(true);
+      }
+    }
+  }, [forceLocal, systemlinkSso]);
+
   const router = useRouter();
 
   const [error, setError] = useState<ApiErrorType>(null);
@@ -51,35 +95,36 @@ function SignForm({
     {
       onSuccess: (response: any) => onSuccess(
         response, {
-          callback: ({
-            session: {
-              token,
-              user,
-            },
-          }) => {
-            setUser(user);
-            AuthToken.storeToken(token, () => {
-              let url: string = '/';
-              const query = queryFromUrl(window.location.href);
+        callback: ({
+          session: {
+            token,
+            user,
+          },
+        }) => {
+          setUser(user);
+          AuthToken.storeToken(token, () => {
+            let url: string = '/';
+            const query = queryFromUrl(window.location.href);
 
-              if (typeof window !== 'undefined' && query.redirect_url) {
-                const qs = queryString(
-                  ignoreKeys(
-                    query,
-                    ['redirect_url', 'access_token', 'provider'],
-                  ),
-                );
-                url = `${query.redirect_url}?${qs}`;
-                window.location.href = url;
-              } else {
-                router.push(url);
-              }
-            });
-          },
-          onErrorCallback: ({ error }) => {
-            setError(error);
-          },
+            if (typeof window !== 'undefined' && query.redirect_url) {
+              const qs = queryString(
+                ignoreKeys(
+                  query,
+                  ['redirect_url', 'access_token', 'provider'],
+                ),
+              );
+              url = `${query.redirect_url}?${qs}`;
+              window.location.href = url;
+            } else {
+              router.push(url);
+            }
+          });
         },
+        onErrorCallback: ({ error }) => {
+          setShowSpinner(false);
+          setError(error);
+        },
+      },
       ),
     },
   );
@@ -93,10 +138,19 @@ function SignForm({
   });
   const adOauthUrl = useMemo(() => dataOauthAD?.oauth?.url, [dataOauthAD]);
 
-  const { 
+  const {
     access_token: accessTokenFromURL,
     provider,
   } = queryFromUrl() || {};
+
+  useEffect(() => {
+    if (isRedirect) {
+      const currentPath = typeof window !== 'undefined' ? window.location.pathname : null;
+      const query = typeof window !== 'undefined' ? window.location.search : null;
+      loginUrl = '/login?redirectUrl=' + encodeURIComponent(currentPath + query);
+      window.location.href = loginUrl;
+    }
+  });
 
   useEffect(() => {
     if (accessTokenFromURL && provider) {
@@ -106,15 +160,17 @@ function SignForm({
           [KEY_PROVIDER]: provider,
           [KEY_TOKEN]: accessTokenFromURL,
         },
-      });
+      })
+        .catch(error => {
+          setShowSpinner(false);
+          setError(error);
+        })
     }
-  }, [
-    accessTokenFromURL,
-    createRequest,
-    provider,
-  ]);
+  }, [accessTokenFromURL, createRequest, provider]);
 
-  return (
+  let spinnerContent = (<Spinner inverted large fullScreen />);
+
+  let signFormPageContent = (
     <Row fullHeight>
       <Col
         lg={6}
@@ -137,7 +193,6 @@ function SignForm({
               <Headline yellow>
                 {title}
               </Headline>
-
               <form>
                 <Spacing mt={3}>
                   <TextInput
@@ -193,7 +248,7 @@ function SignForm({
                       keyMapping,
                     }) => onlyKeysPresent([KEY_CODE_ENTER], keyMapping)}
                     large
-                    loading={isLoading}
+                    loading={isLoading} // || isLoading2}
                     noHoverUnderline
                     // @ts-ignore
                     onClick={() => create({
@@ -206,7 +261,7 @@ function SignForm({
                     Sign into Mage
                   </KeyboardShortcutButton>
                 </Spacing>
-                
+
                 {adOauthUrl && (
                   <Spacing mt={4}>
                     <KeyboardShortcutButton
@@ -245,7 +300,15 @@ function SignForm({
         </Spacing>
       </Col>
     </Row>
-  );
+  )
+
+  if (showPageLocal) {
+    return signFormPageContent;
+  } else if (showSpinner) {
+    return spinnerContent
+  } else {
+    return signFormPageContent;
+  }
 }
 
 export default SignForm;

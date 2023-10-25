@@ -87,6 +87,7 @@ from mage_ai.settings import (
     ROUTES_BASE_PATH,
     SERVER_VERBOSITY,
     SHELL_COMMAND,
+    SYSTEMLINK_SSO,
     USE_UNIQUE_TERMINAL,
 )
 from mage_ai.settings.repo import DEFAULT_MAGE_DATA_DIR, get_repo_name, set_repo_path
@@ -100,6 +101,10 @@ EXPORTS_FOLDER = 'frontend_dist'
 BASE_PATH_EXPORTS_FOLDER = 'frontend_dist_base_path'
 BASE_PATH_TEMPLATE_EXPORTS_FOLDER = 'frontend_dist_base_path_template'
 BASE_PATH_PLACEHOLDER = 'CLOUD_NOTEBOOK_BASE_PATH_PLACEHOLDER_'
+
+if SYSTEMLINK_SSO:
+    EXPORTS_FOLDER = 'frontend_dist_sle'
+    BASE_PATH_TEMPLATE_EXPORTS_FOLDER = 'frontend_dist_sle_base_path_template'
 
 lock = DistributedLock()
 logger = Logger().new_server_logger(__name__)
@@ -212,13 +217,13 @@ def make_app(template_dir: str = None, update_routes: bool = False):
         (r'/?', MainPageHandler),
         (r'/files', MainPageHandler),
         (r'/overview', MainPageHandler),
-        (r'/oauth', MainPageHandler),
         (r'/pipelines', MainPageHandler),
         (r'/pipelines/(.*)', MainPageHandler),
         (r'/pipeline-runs', PipelineRunsPageHandler),
         (r'/settings', MainPageHandler),
         (r'/settings/(.*)', MainPageHandler),
         (r'/sign-in', MainPageHandler),
+        (r'/sign-in-local', MainPageHandler),
         (r'/terminal', MainPageHandler),
         (r'/triggers', MainPageHandler),
         (r'/manage', MainPageHandler),

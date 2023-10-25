@@ -3,7 +3,7 @@ from typing import Dict
 from mage_ai.api.constants import AttributeOperationType
 from mage_ai.api.oauth_scope import OauthScope
 from mage_ai.api.operations import constants
-from mage_ai.api.operations.constants import OperationType
+from mage_ai.api.operations.constants import COOKIE_PREFIX, OperationType
 from mage_ai.api.policies.BasePolicy import BasePolicy
 from mage_ai.api.policies.mixins.user_permissions import UserPermissionMixIn
 from mage_ai.orchestration.constants import Entity
@@ -85,6 +85,7 @@ SessionPolicy.allow_write([
     'username',
     'token',
     'provider',
+    COOKIE_PREFIX + 'session-id',
 ], scopes=[
     OauthScope.CLIENT_PUBLIC,
 ], on_action=[
